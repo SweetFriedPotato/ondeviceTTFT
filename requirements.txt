@@ -1,0 +1,6 @@
+vllm
+torch
+numpy
+pandas
+transformers
+accelerate
