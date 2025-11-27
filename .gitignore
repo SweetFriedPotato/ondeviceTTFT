@@ -1,1 +1,23 @@
 /.venv311
+# Python / 가상환경
+.venv/
+venv/
+env/
+*.pyc
+__pycache__/
+
+# Conda/가상환경 흔적
+*.conda
+*.ipynb_checkpoints
+
+# OS / 편집기
+.DS_Store
+*.swp
+*.swo
+
+# 설치 스크립트
+Miniconda3-latest-MacOSX-arm64.sh
+
+# 실험 결과 (원하면 버전관리 안 함)
+experiments/results/*.csv
+
