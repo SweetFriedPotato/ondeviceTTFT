@@ -7,34 +7,24 @@ from datetime import datetime
 
 from .config import (
     TTFT_PROMPT,
-    MAX_NEW_TOKENS,
+    MAX_NEW_TOKENS_FOR_TTFT,
     NUM_TRIALS,
     MODEL_ID,
-    DEVICE,
-    DTYPE
 )
-from .llm_runner import load_llm
+from .llm_runner import create_llm, generate_once
 
 RESULT_DIR = "experiments/results"
 
 
-def measure_ttft_single(llm, prompt):
+def measure_ttft_once(llm, prompt: str, max_tokens: int) -> float:
     """
-    vLLM non-stream 기반 TTFT 측정: 
-    max_new_tokens=1 생성에 걸린 시간을 첫 토큰 시간으로 근사.
+    한 번의 요청에 대해
+    - generate_once 호출 전후 시간 차이를 재서
+    - 첫 번째 토큰이 나올 때까지의 지연시간을 TTFT로 근사.
     """
-    from vllm import SamplingParams
-
-    params = SamplingParams(
-        max_tokens=1,
-        temperature=0.0,
-        top_p=1.0
-    )
-
     start = time.time()
-    _ = llm.generate(prompt, params)
+    _ = generate_once(llm, prompt, max_tokens)
     end = time.time()
-
     return end - start
 
 
@@ -42,34 +32,51 @@ def main():
     os.makedirs(RESULT_DIR, exist_ok=True)
 
     print(f"[INFO] Loading model: {MODEL_ID}")
-    load_s = time.time()
-    llm = load_llm()
-    load_e = time.time()
+    load_start = time.time()
+    llm = create_llm()
+    load_end = time.time()
+    load_time = load_end - load_start
+    print(f"[INFO] Model loaded in {load_time:.3f} seconds")
 
-    load_time = load_e - load_s
-    print(f"[INFO] Model loaded in {load_time:.3f}s")
-
-    ttft_records = []
+    ttft_list = []
 
     for i in range(NUM_TRIALS):
-        t = measure_ttft_single(llm, TTFT_PROMPT)
-        print(f"Trial {i+1}/{NUM_TRIALS} TTFT: {t:.4f}s")
-        ttft_records.append(t)
+        print(f"[INFO] Trial {i+1}/{NUM_TRIALS}")
+        ttft = measure_ttft_once(
+            llm,
+            TTFT_PROMPT,
+            MAX_NEW_TOKENS_FOR_TTFT,
+        )
+        print(f"  -> TTFT: {ttft:.4f} s")
+        ttft_list.append(ttft)
 
-    avg_ttft = sum(ttft_records) / len(ttft_records)
-    print(f"[RESULT] Average TTFT = {avg_ttft:.4f}s")
+    avg_ttft = sum(ttft_list) / len(ttft_list)
+    print(f"[RESULT] Average TTFT: {avg_ttft:.4f} s")
 
-    # CSV 저장
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    outpath = os.path.join(RESULT_DIR, f"ttft_{timestamp}.csv")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_path = os.path.join(RESULT_DIR, f"ttft_{timestamp}.csv")
 
-    with open(outpath, "w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(["trial_index", "ttft_seconds"])
-        for idx, v in enumerate(ttft_records):
-            w.writerow([idx, v])
+    with open(out_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "timestamp",
+            "model_id",
+            "num_trials",
+            "trial_index",
+            "ttft_seconds",
+            "model_load_time_seconds",
+        ])
+        for idx, v in enumerate(ttft_list):
+            writer.writerow([
+                timestamp,
+                MODEL_ID,
+                NUM_TRIALS,
+                idx,
+                v,
+                load_time,
+            ])
 
-    print(f"[INFO] Results saved to {outpath}")
+    print(f"[INFO] Saved results to {out_path}")
 
 
 if __name__ == "__main__":
