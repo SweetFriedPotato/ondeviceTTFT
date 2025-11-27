@@ -15,13 +15,16 @@ IS_APPLE_SILICON = (
 def create_llm():
     """
     서버(M3 Ultra)에서 vLLM을 사용해 LLM을 로드하는 함수.
-    - Apple Silicon + CPU-only 환경에서 안정적으로 돌리기 위해:
-      - VLLM_USE_V1=0 으로 V1 엔진 비활성화
-      - enforce_eager=True 로 torch.compile / Inductor 비활성화
     """
+    import os
+    import platform
+    from .config import MODEL_ID, DTYPE
+
+    IS_APPLE_SILICON = (
+        platform.system() == "Darwin" and platform.machine() == "arm64"
+    )
 
     if IS_APPLE_SILICON:
-        # V1 엔진 끄기 (ARM + CPU에서 문제 많은 부분)
         os.environ["VLLM_USE_V1"] = "0"
 
     print(f"[INFO] Using vLLM backend on server")
@@ -31,7 +34,10 @@ def create_llm():
         model=MODEL_ID,
         dtype=DTYPE,
         trust_remote_code=True,
-        enforce_eager=True,  # CPU 환경에서 Inductor 끄는 핵심 옵션
+        enforce_eager=True,   # torch.compile 끄기
+        max_model_len=4096,   # 우리가 쓸 최대 context 길이 (실험용으로 4k면 충분)
+        max_num_batched_tokens=4096,  # 위 값과 동일하게 맞춰서 에러 방지
+        max_num_seqs=1,       # TTFT 실험은 1개 시퀀스씩만 처리
     )
     return llm
 
